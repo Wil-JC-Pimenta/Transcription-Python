@@ -4,6 +4,20 @@ import yt_dlp
 import speech_recognition as sr
 import sys
 import subprocess
+from datetime import datetime
+import re
+
+# Cria as pastas se não existirem
+for pasta in ['audio', 'transcription']:
+    if not os.path.exists(pasta):
+        os.makedirs(pasta)
+
+def limpar_nome_arquivo(nome):
+    """Remove caracteres inválidos do nome do arquivo"""
+    # Remove caracteres especiais e substitui espaços por underscores
+    nome_limpo = re.sub(r'[<>:"/\\|?*]', '', nome)
+    nome_limpo = nome_limpo.replace(' ', '_')
+    return nome_limpo
 
 def verificar_ffmpeg():
     """Verifica se o FFmpeg está instalado e acessível"""
@@ -23,12 +37,12 @@ def baixar_audio(url):
         if not ffmpeg_path:
             print("❌ FFmpeg não encontrado em C:\\ffmpeg\\bin\\ffmpeg.exe")
             print("Por favor, verifique se o FFmpeg está instalado corretamente.")
-            return None
+            return None, None
         
         # Configurações do yt-dlp
         ydl_opts = {
             'format': 'bestaudio/best',
-            'outtmpl': 'audio.%(ext)s',
+            'outtmpl': os.path.join('audio', 'audio.%(ext)s'),
             'quiet': True,
             'no_warnings': True,
             'ffmpeg_location': ffmpeg_path,
@@ -41,19 +55,27 @@ def baixar_audio(url):
         
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             info = ydl.extract_info(url, download=True)
-            arquivo = 'audio.wav'  # Agora sabemos que será sempre .wav
+            titulo = info.get('title', 'video_sem_titulo')
+            titulo_limpo = limpar_nome_arquivo(titulo)
             
-        if not os.path.exists(arquivo):
+            # Renomeia o arquivo de áudio com o título do vídeo
+            arquivo_original = os.path.join('audio', 'audio.wav')
+            arquivo_final = os.path.join('audio', f'{titulo_limpo}.wav')
+            
+            if os.path.exists(arquivo_original):
+                os.rename(arquivo_original, arquivo_final)
+            
+        if not os.path.exists(arquivo_final):
             raise Exception("Arquivo de áudio não foi criado corretamente")
             
         print("✅ Áudio baixado com sucesso!")
-        return arquivo
+        return arquivo_final, titulo
             
     except Exception as e:
         print(f"❌ Erro ao baixar o vídeo: {str(e)}")
-        return None
+        return None, None
 
-def transcrever_audio(caminho):
+def transcrever_audio(caminho, titulo):
     if not os.path.exists(caminho):
         print("❌ Arquivo de áudio não encontrado!")
         return
@@ -82,17 +104,21 @@ def transcrever_audio(caminho):
                 for frase in frases:
                     print(frase)
                     time.sleep(1)
+                
+                # Salva a transcrição em um arquivo
+                titulo_limpo = limpar_nome_arquivo(titulo)
+                nome_arquivo = f"{titulo_limpo}.txt"
+                caminho_transcricao = os.path.join('transcription', nome_arquivo)
+                
+                with open(caminho_transcricao, 'w', encoding='utf-8') as f:
+                    f.write(texto)
+                print(f"\n💾 Transcrição salva em: {caminho_transcricao}")
+                print(f"💾 Áudio salvo em: {caminho}")
             else:
                 print("❌ Não foi possível reconhecer o texto no áudio")
                 
     except Exception as e:
         print(f"❌ Erro na transcrição: {str(e)}")
-    finally:
-        try:
-            os.remove(caminho)
-            print("🧹 Arquivo removido.")
-        except:
-            pass
 
 if __name__ == "__main__":
     try:
@@ -104,9 +130,9 @@ if __name__ == "__main__":
             print("❌ URL não pode estar vazia!")
             sys.exit(1)
             
-        arquivo = baixar_audio(url)
+        arquivo, titulo = baixar_audio(url)
         if arquivo:
-            transcrever_audio(arquivo)
+            transcrever_audio(arquivo, titulo)
             
     except KeyboardInterrupt:
         print("\n👋 Programa interrompido pelo usuário")
